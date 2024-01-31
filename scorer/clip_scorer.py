@@ -1,6 +1,7 @@
 from transformers import CLIPModel, CLIPProcessor
 from scorer import Scorer
 
+
 class CLIPScorer(Scorer):
     def __init__(self, text, images, model: CLIPModel, processor: CLIPProcessor):
         super().__init__(text, images)
@@ -9,10 +10,12 @@ class CLIPScorer(Scorer):
 
     def _process_input(self):
         self.processed_images = [
-            self.processor(text=self.text, images=image, return_tensors="pt", padding=True)
+            self.processor(
+                text=self.text, images=image, return_tensors="pt", padding=True
+            )
             for image in self.images
         ]
-        
+
     def _calculate_score(self):
         scores = []
         for processed_image in self.processed_images:

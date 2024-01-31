@@ -295,10 +295,7 @@ def parse_args(input_args=None):
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
-        "--dpo_beta",
-        type=float,
-        default=1,
-        help="DPO beta.",
+        "--dpo_beta", type=float, default=1, help="DPO beta.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -497,9 +494,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--noise_offset", type=float, default=0, help="The scale of noise offset."
     )
-    parser.add_argument(
-        "--sd_version", type=str, default="1.5", help="sd version"
-    )
+    parser.add_argument("--sd_version", type=str, default="1.5", help="sd version")
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -512,8 +507,9 @@ def parse_args(input_args=None):
     # Sanity checks
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
-    
+
     return args
+
 
 def generate_timestep_weights(args, num_timesteps):
     weights = torch.ones(num_timesteps)
@@ -620,7 +616,10 @@ def main(args):
         args.pretrained_model_name_or_path, subfolder="scheduler"
     )
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -727,7 +726,7 @@ def main(args):
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
-    if args.allow_tf32:
+    if args.allow_tf32 and torch.backends.cuda.is_built():
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
@@ -766,23 +765,34 @@ def main(args):
 
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
     # download the dataset.
-    dataset = load_from_disk(
-            args.dataset_name,
-        )
+    dataset = load_from_disk(args.dataset_name,)
     train_dataset = dataset
-    
+
     gc.collect()
-    torch.cuda.empty_cache()
+    if torch.backends.cuda.is_built():
+        torch.cuda.empty_cache()
+    if torch.backends.mps.is_build():
+        torch.mps.empty_cache()
 
     def collate_fn(examples):
         good_model_input = torch.stack(
-            [torch.tensor(example[args.good_image_column + "_model_input"]) for example in examples]
+            [
+                torch.tensor(example[args.good_image_column + "_model_input"])
+                for example in examples
+            ]
         )
         bad_model_input = torch.stack(
-            [torch.tensor(example[args.bad_image_column + "_model_input"]) for example in examples]
+            [
+                torch.tensor(example[args.bad_image_column + "_model_input"])
+                for example in examples
+            ]
         )
-        original_sizes = [example[args.good_image_column + "_original_sizes"] for example in examples]
-        crop_top_lefts = [example[args.good_image_column + "_crop_top_lefts"] for example in examples]
+        original_sizes = [
+            example[args.good_image_column + "_original_sizes"] for example in examples
+        ]
+        crop_top_lefts = [
+            example[args.good_image_column + "_crop_top_lefts"] for example in examples
+        ]
         prompt_embeds = torch.stack(
             [torch.tensor(example["prompt_embeds"]) for example in examples]
         )
@@ -903,8 +913,14 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Sample noise that we'll add to the latents
-                good_model_input = batch["good_model_input"].to(accelerator.device) * vae.config.scaling_factor
-                bad_model_input = batch["bad_model_input"].to(accelerator.device) * vae.config.scaling_factor
+                good_model_input = (
+                    batch["good_model_input"].to(accelerator.device)
+                    * vae.config.scaling_factor
+                )
+                bad_model_input = (
+                    batch["bad_model_input"].to(accelerator.device)
+                    * vae.config.scaling_factor
+                )
 
                 good_noise = torch.randn_like(good_model_input)
                 bad_noise = torch.randn_like(good_model_input)
@@ -930,7 +946,9 @@ def main(args):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
                     target_size = (args.resolution, args.resolution)
                     add_time_ids = list(
-                        tuple(original_size) + tuple(crops_coords_top_left) + target_size
+                        tuple(original_size)
+                        + tuple(crops_coords_top_left)
+                        + target_size
                     )
                     add_time_ids = torch.tensor([add_time_ids])
                     add_time_ids = add_time_ids.to(
@@ -1012,8 +1030,10 @@ def main(args):
                     * (
                         torch.norm(good_model_pred.float() - good_target.float())
                         - torch.norm(good_target.float() - good_model_ref.float())
-                        - (torch.norm(bad_model_pred.float() - bad_target.float())
-                        - torch.norm(bad_target.float() - bad_model_ref.float()))
+                        - (
+                            torch.norm(bad_model_pred.float() - bad_target.float())
+                            - torch.norm(bad_target.float() - bad_model_ref.float())
+                        )
                     )
                 ).mean()
                 # Gather the losses across all processes for logging (if we use distributed training).

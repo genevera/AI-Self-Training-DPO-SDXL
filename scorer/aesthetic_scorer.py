@@ -7,12 +7,13 @@ from torchvision.transforms import functional as TF
 from transformers import CLIPImageProcessor, CLIPModel
 
 from scorer import Scorer
-from scorer.simulacra_aesthetic_models.simulacra_fit_linear_model import \
-    AestheticMeanPredictionLinearModel
+from scorer.simulacra_aesthetic_models.simulacra_fit_linear_model import (
+    AestheticMeanPredictionLinearModel,
+)
 
 
 class MLP(torch.nn.Module):
-    def __init__(self, input_size, xcol='emb', ycol='avg_rating'):
+    def __init__(self, input_size, xcol="emb", ycol="avg_rating"):
         super().__init__()
         self.input_size = input_size
         self.xcol = xcol
@@ -25,7 +26,7 @@ class MLP(torch.nn.Module):
             nn.Linear(128, 64),
             nn.Dropout(0.1),
             nn.Linear(64, 16),
-            nn.Linear(16, 1)
+            nn.Linear(16, 1),
         )
 
     def forward(self, x):
@@ -34,13 +35,21 @@ class MLP(torch.nn.Module):
 
 def normalized(a, axis=-1, order=2):
     import numpy as np
+
     l2 = np.atleast_1d(np.linalg.norm(a, order, axis))
     l2[l2 == 0] = 1
     return a / np.expand_dims(l2, axis)
 
 
 class AestheticScorer(Scorer):
-    def __init__(self, text, images, clip_model: CLIPModel, clip_processor: CLIPImageProcessor, aesthetic_model: MLP):
+    def __init__(
+        self,
+        text,
+        images,
+        clip_model: CLIPModel,
+        clip_processor: CLIPImageProcessor,
+        aesthetic_model: MLP,
+    ):
         """
         Initialize Scorer object.
 
@@ -49,11 +58,11 @@ class AestheticScorer(Scorer):
         """
         super().__init__(text, images)
         self.scores = []
-        self.device = torch.device('cpu')
+        self.device = torch.device("cpu")
         if torch.backends.cuda.is_built():
-            self.device = torch.device('cuda:0')
+            self.device = torch.device("cuda:0")
         if torch.backends.mps.is_built():
-            self.device = torch.device('mps')
+            self.device = torch.device("mps")
 
         # Load the CLIP model
         self.clip_model = clip_model
@@ -67,8 +76,9 @@ class AestheticScorer(Scorer):
         Calculate scores for each image.
         """
         for img in self.images:
-            image = torch.from_numpy(self.clip_processor(
-                img)['pixel_values'][0]).unsqueeze(0)
+            image = torch.from_numpy(
+                self.clip_processor(img)["pixel_values"][0]
+            ).unsqueeze(0)
             with torch.no_grad():
                 image_features = self.clip_model.get_image_features(image)
 

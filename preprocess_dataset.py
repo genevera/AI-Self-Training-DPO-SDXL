@@ -10,9 +10,8 @@ from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 import argparse
-from diffusers import (
-    AutoencoderKL,
-)
+from diffusers import AutoencoderKL
+
 
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
@@ -60,20 +59,22 @@ def preprocess_train(examples, vae, args):
             image = train_transforms(image).squeeze(0)
             processed_images.append(image)
         with torch.no_grad():
-            model_input = vae.encode(torch.stack(processed_images).to(vae.device)).latent_dist.sample().squeeze()
+            model_input = (
+                vae.encode(torch.stack(processed_images).to(vae.device))
+                .latent_dist.sample()
+                .squeeze()
+            )
         examples[image_column + "_original_sizes"] = original_sizes
         examples[image_column + "_crop_top_lefts"] = crop_top_lefts
         examples[image_column + "_model_input"] = model_input
+
     for image_column in [args.good_image_column, args.bad_image_column]:
         preprocess_images(image_column)
     return examples
 
+
 def encode_prompt(
-    batch,
-    text_encoders,
-    tokenizers,
-    args,
-    is_train=True,
+    batch, text_encoders, tokenizers, args, is_train=True,
 ):
     prompt_embeds_list = []
     prompt_batch = batch[args.caption_column]
@@ -98,19 +99,19 @@ def encode_prompt(
             text_input_ids = text_inputs.input_ids
             if args.sd_version == "xl":
                 prompt_embeds = text_encoder(
-                    text_input_ids.to(text_encoder.device),
-                    output_hidden_states=True,
+                    text_input_ids.to(text_encoder.device), output_hidden_states=True,
                 )
                 # We are only ALWAYS interested in the pooled output of the final text encoder
                 pooled_prompt_embeds = prompt_embeds[0]
-                
+
                 prompt_embeds = prompt_embeds.hidden_states[-2]
                 bs_embed, seq_len, _ = prompt_embeds.shape
                 prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
                 prompt_embeds_list.append(prompt_embeds)
             else:
-                prompt_embeds = text_encoder(text_input_ids.to(text_encoder.device),
-                    return_dict=False)[0]
+                prompt_embeds = text_encoder(
+                    text_input_ids.to(text_encoder.device), return_dict=False
+                )[0]
                 prompt_embeds_list.append(prompt_embeds)
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     if args.sd_version == "xl":
@@ -123,7 +124,8 @@ def encode_prompt(
         return {
             "prompt_embeds": prompt_embeds.cpu(),
         }
-    
+
+
 def main(args):
     tokenizer_one = AutoTokenizer.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -143,7 +145,9 @@ def main(args):
     )
     if args.sd_version == "xl":
         text_encoder_cls_two = import_model_class_from_model_name_or_path(
-            args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
+            args.pretrained_model_name_or_path,
+            args.revision,
+            subfolder="text_encoder_2",
         )
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -158,7 +162,7 @@ def main(args):
             revision=args.revision,
             variant=args.variant,
         )
-    
+
     vae_path = (
         args.pretrained_model_name_or_path
         if args.pretrained_vae_model_name_or_path is None
@@ -182,17 +186,12 @@ def main(args):
 
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        dataset = load_from_disk(
-            args.dataset_name
-        )
+        dataset = load_from_disk(args.dataset_name)
     else:
         data_files = {}
         if args.train_data_dir is not None:
             data_files = os.path.join(args.train_data_dir, "**")
-        dataset = load_dataset(
-            "imagefolder",
-            data_files=data_files,
-        )
+        dataset = load_dataset("imagefolder", data_files=data_files,)
     column_names = dataset.column_names
 
     if args.good_image_column is None:
@@ -223,24 +222,18 @@ def main(args):
         text_encoders = [text_encoder_one]
         tokenizers = [tokenizer_one]
 
-    preprocess_train_fn = functools.partial(
-        preprocess_train,
-        vae=vae,
-        args=args
-    )
+    preprocess_train_fn = functools.partial(preprocess_train, vae=vae, args=args)
     if args.max_train_samples is not None:
-        dataset = (
-            dataset
-            .shuffle(seed=args.seed)
-            .select(range(args.max_train_samples))
-        )
-    train_dataset = dataset.map(preprocess_train_fn, batched=True, batch_size=args.batch_size, remove_columns=['good_jpg', 'bad_jpg'])
+        dataset = dataset.shuffle(seed=args.seed).select(range(args.max_train_samples))
+    train_dataset = dataset.map(
+        preprocess_train_fn,
+        batched=True,
+        batch_size=args.batch_size,
+        remove_columns=["good_jpg", "bad_jpg"],
+    )
 
     compute_embeddings_fn = functools.partial(
-        encode_prompt,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
-        args=args
+        encode_prompt, text_encoders=text_encoders, tokenizers=tokenizers, args=args
     )
     train_dataset = train_dataset.map(
         compute_embeddings_fn, batched=True, batch_size=args.batch_size
@@ -252,7 +245,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    
     # parser.add_argument("--pretrained_model_name_or_path", default="models/stable-diffusion-xl-base-1.0", type=str)
     # parser.add_argument("--pretrained_vae_model_name_or_path", default=None, type=str)
     # parser.add_argument("--dataset_name", default="dataset/ccd_ai_feedback", type=str)
@@ -274,12 +266,16 @@ if __name__ == "__main__":
     # parser.add_argument("--batch_size", default=32, type=int)
     # parser.add_argument("--sd_version", default="1.5", type=str)
 
-    parser.add_argument("--pretrained_model_name_or_path", default="models/stable-diffusion-xl-base-1.0", type=str)
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        default="models/stable-diffusion-xl-base-1.0",
+        type=str,
+    )
     parser.add_argument("--pretrained_vae_model_name_or_path", default=None, type=str)
     parser.add_argument("--dataset_name", default="dataset/ccd_ai_feedback", type=str)
     parser.add_argument("--resolution", default=1024, type=int)
-    parser.add_argument("--center_crop", action='store_true')
-    parser.add_argument("--random_flip", action='store_true')
+    parser.add_argument("--center_crop", action="store_true")
+    parser.add_argument("--random_flip", action="store_true")
     parser.add_argument("--caption_column", default="caption", type=str)
     parser.add_argument("--good_image_column", default="good_jpg", type=str)
     parser.add_argument("--bad_image_column", default="bad_jpg", type=str)
@@ -295,9 +291,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=8, type=int)
     parser.add_argument("--sd_version", default="xl", type=str)
 
-
     args = parser.parse_args()
-    
+
     train_resize = transforms.Resize(
         args.resolution, interpolation=transforms.InterpolationMode.BILINEAR
     )
@@ -310,5 +305,5 @@ if __name__ == "__main__":
     train_transforms = transforms.Compose(
         [transforms.ToTensor(), transforms.Normalize([0.5], [0.5])]
     )
-    
+
     main(args)

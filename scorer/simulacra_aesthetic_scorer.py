@@ -4,11 +4,21 @@ from torchvision import transforms
 from torchvision.transforms import functional as TF
 from torch.nn import functional as F
 from scorer import Scorer
-from scorer.simulacra_aesthetic_models.simulacra_fit_linear_model import AestheticMeanPredictionLinearModel
+from scorer.simulacra_aesthetic_models.simulacra_fit_linear_model import (
+    AestheticMeanPredictionLinearModel,
+)
 from transformers import CLIPProcessor, CLIPModel
 
+
 class SimulacraAestheticScorer(Scorer):
-    def __init__(self, text, images, clip_model: CLIPModel, clip_processor: CLIPProcessor, aesthetic_model: AestheticMeanPredictionLinearModel):
+    def __init__(
+        self,
+        text,
+        images,
+        clip_model: CLIPModel,
+        clip_processor: CLIPProcessor,
+        aesthetic_model: AestheticMeanPredictionLinearModel,
+    ):
         """
         Initialize Scorer object.
 
@@ -18,11 +28,11 @@ class SimulacraAestheticScorer(Scorer):
         self.text = text
         self.images = images
         self.scores = []
-        self.device = torch.device('cpu')
+        self.device = torch.device("cpu")
         if torch.backends.cuda.is_built():
-            self.device = torch.device('cuda:0')
+            self.device = torch.device("cuda:0")
         if torch.backends.mps.is_built():
-            self.device = torch.device('mps')
+            self.device = torch.device("mps")
 
         # Load the CLIP model
         self.clip_model = clip_model
@@ -37,7 +47,7 @@ class SimulacraAestheticScorer(Scorer):
         """
         for idx, img in enumerate(self.images):
             img = TF.resize(img, 224, transforms.InterpolationMode.LANCZOS)
-            img = TF.center_crop(img, (224,224))
+            img = TF.center_crop(img, (224, 224))
             self.images[idx] = img
 
     def _calculate_score(self):
