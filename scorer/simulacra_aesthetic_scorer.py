@@ -18,7 +18,11 @@ class SimulacraAestheticScorer(Scorer):
         self.text = text
         self.images = images
         self.scores = []
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cpu')
+        if torch.backends.cuda.is_built():
+            self.device = torch.device('cuda:0')
+        if torch.backends.mps.is_built():
+            self.device = torch.device('mps')
 
         # Load the CLIP model
         self.clip_model = clip_model
@@ -46,10 +50,10 @@ class SimulacraAestheticScorer(Scorer):
 
             with torch.no_grad():
                 clip_image_embed = self.clip_model.get_image_features(**inputs)
-            
+
             score = self.model(F.normalize(clip_image_embed, dim=-1))
             self.scores.append(score.item())
-            
+
     def get_scores(self):
         """
         Return the final scores.

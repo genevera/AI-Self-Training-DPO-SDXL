@@ -1,20 +1,26 @@
 import os
 from argparse import ArgumentParser
-from tqdm import tqdm
+
+import torch
+from CLIP import clip
 from PIL import Image
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
-import torch
+from tqdm import tqdm
+
 from simulacra_fit_linear_model import AestheticMeanPredictionLinearModel
-from CLIP import clip
 
 parser = ArgumentParser()
 parser.add_argument("directory")
 parser.add_argument("-t", "--top-n", default=50)
 args = parser.parse_args()
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
+if torch.backends.cuda.is_built():
+    device = torch.device('cuda:0')
+if torch.backends.mps.is_built():
+    device = torch.device('mps')
 
 clip_model_name = 'ViT-B/16'
 clip_model = clip.load(clip_model_name, jit=False, device=device)[0]
@@ -40,7 +46,7 @@ for path in tqdm(filepaths):
         continue
     img = Image.open(path).convert('RGB')
     img = TF.resize(img, 224, transforms.InterpolationMode.LANCZOS)
-    img = TF.center_crop(img, (224,224))
+    img = TF.center_crop(img, (224, 224))
     img = TF.to_tensor(img).to(device)
     img = normalize(img)
     clip_image_embed = F.normalize(
@@ -48,13 +54,13 @@ for path in tqdm(filepaths):
         dim=-1)
     score = model(clip_image_embed)
     if len(scores) < args.top_n:
-        scores.append((score.item(),path))
+        scores.append((score.item(), path))
         scores.sort()
     else:
         if scores[0][0] < score:
-            scores.append((score.item(),path))
+            scores.append((score.item(), path))
             scores.sort(key=lambda x: x[0])
             scores = scores[1:]
-            
+
 for score, path in scores:
     print(f"{score}: {path}")
